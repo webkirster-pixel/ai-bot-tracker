@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Bot Tracker</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Утилиты для localStorage
+        const storage = {
+            getSites: () => JSON.parse(localStorage.getItem('sites') || '[]'),
+            saveSites: (sites) => localStorage.setItem('sites', JSON.stringify(sites)),
+            getVisits: () => JSON.parse(localStorage.getItem('visits') || '[]'),
+            saveVisits: (visits) => localStorage.setItem('visits', JSON.stringify(visits)),
+        };
+
+        // Генерация демо-данных
+        const generateDemoVisits = (siteId) => {
+            const sources = ['Google AI', 'ChatGPT', 'DeepSeek', 'Яндекс AI', 'Алиса AI', 'Perplexity'];
+            const pages = ['/', '/about', '/products', '/blog', '/contact', '/pricing'];
+            const queries = [
+                'лучшие решения для бизнеса',
+                'как оптимизировать процессы',
+                'обзор продуктов компании',
+                'стоимость услуг',
+                'отзывы о компании',
+            ];
+
+            const visits = [];
+            const now = Date.now();
+
+            for (let i = 0; i < 30; i++) {
+                const daysAgo = Math.floor(Math.random() * 7);
+                const timestamp = new Date(now - daysAgo * 86400000).toISOString();
+
+                visits.push({
+                    id: Math.random().toString(36),
+                    site_id: siteId,
+                    page: pages[Math.floor(Math.random() * pages.length)],
+                    source: sources[Math.floor(Math.random() * sources.length)],
+                    query: queries[Math.floor(Math.random() * queries.length)],
+                    timestamp,
+                });
+            }
+
+            const existing = storage.getVisits();
+            storage.saveVisits([...existing, ...visits]);
+        };
+
+        // Компонент приложения
+        function App() {
+            const [sites, setSites] = useState(storage.getSites());
+            const [selectedSite, setSelectedSite] = useState(null);
+            const [showAddModal, setShowAddModal] = useState(false);
+            const [activeTab, setActiveTab] = useState('dashboard');
+
+            const addSite = (url, name) => {
+                const newSite = {
+                    id: Math.random().toString(36),
+                    url: url.replace(/\/$/, ''),
+                    name: name || new URL(url).hostname,
+                    script_key: Math.random().toString(36).substring(2, 18),
+                    created_at: new Date().toISOString(),
+                };
+                const updated = [...sites, newSite];
+                setSites(updated);
+                storage.saveSites(updated);
+                generateDemoVisits(newSite.id);
+                setSelectedSite(newSite);
+                setActiveTab('script');
+                setShowAddModal(false);
+            };
+
+            const deleteSite = (id) => {
+                const updated = sites.filter(s => s.id !== id);
+                setSites(updated);
+                storage.saveSites(updated);
+                if (selectedSite?.id === id) {
+                    setSelectedSite(null);
+                    setActiveTab('dashboard');
+                }
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-950 text-white">
+                    {/* Header */}
+                    <div className="bg-gray-900 border-b border-gray-800 px-6 py-4">
+                        <div className="max-w-6xl mx-auto flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-blue-500 rounded-xl flex items-center justify-center">
+                                    <span className="text-xl font-bold">AI</span>
+                                </div>
+                                <div>
+                                    <h1 className="text-xl font-bold">AI Bot Tracker</h1>
+                                    <p className="text-xs text-gray-400">Отслеживание AI ботов</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowAddModal(true)}
+                                className="px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-sm font-medium"
+                            >
+                                + Добавить сайт
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="max-w-6xl mx-auto p-6">
+                        {activeTab === 'dashboard' && !selectedSite && (
+                            <Dashboard
+                                sites={sites}
+                                onSelectSite={(site) => {
+                                    setSelectedSite(site);
+                                    setActiveTab('stats');
+                                }}
+                                onAddSite={() => setShowAddModal(true)}
+                            />
+                        )}
+
+                        {selectedSite && activeTab === 'stats' && (
+                            <Statistics
+                                site={selectedSite}
+                                onBack={() => {
+                                    setSelectedSite(null);
+                                    setActiveTab('dashboard');
+                                }}
+                                onShowScript={() => setActiveTab('script')}
+                            />
+                        )}
+
+                        {selectedSite && activeTab === 'script' && (
+                            <ScriptView
+                                site={selectedSite}
+                                onBack={() => setActiveTab('stats')}
+                            />
+                        )}
+                    </div>
+
+                    {/* Add Site Modal */}
+                    {showAddModal && (
+                        <AddSiteModal
+                            onClose={() => setShowAddModal(false)}
+                            onAdd={addSite}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // Dashboard
+        function Dashboard({ sites, onSelectSite, onAddSite }) {
+            const allVisits = storage.getVisits();
+
+            return (
+                <div className="space-y-6">
+                    <div className="bg-gradient-to-br from-violet-600/20 to-blue-600/10 border border-violet-500/20 rounded-2xl p-8">
+                        <h2 className="text-3xl font-bold mb-2">Добро пожаловать!</h2>
+                        <p className="text-gray-300 mb-6">
+                            Отслеживайте переходы AI ботов на ваши сайты
+                        </p>
+                        {sites.length === 0 ? (
+                            <button
+                                onClick={onAddSite}
+                                className="px-6 py-3 bg-violet-600 hover:bg-violet-500 rounded-lg font-medium"
+                            >
+                                Добавить первый сайт
+                            </button>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                                <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-5">
+                                    <p className="text-3xl font-bold">{sites.length}</p>
+                                    <p className="text-sm text-gray-400">Сайтов</p>
+                                </div>
+                                <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-5">
+                                    <p className="text-3xl font-bold">{allVisits.length}</p>
+                                    <p className="text-sm text-gray-400">Переходов</p>
+                                </div>
+                                <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-5">
+                                    <p className="text-3xl font-bold">
+                                        {new Set(allVisits.map(v => v.source)).size}
+                                    </p>
+                                    <p className="text-sm text-gray-400">Источников AI</p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {sites.length > 0 && (
+                        <div>
+                            <h3 className="text-lg font-semibold mb-4">Ваши сайты</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {sites.map(site => {
+                                    const siteVisits = allVisits.filter(v => v.site_id === site.id);
+                                    return (
+                                        <div
+                                            key={site.id}
+                                            onClick={() => onSelectSite(site)}
+                                            className="bg-gray-800/50 border border-gray-700 rounded-xl p-5 cursor-pointer hover:border-violet-500/50 transition-all"
+                                        >
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div>
+                                                    <p className="font-medium">{site.name}</p>
+                                                    <p className="text-sm text-gray-500">{site.url}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-4 text-xs text-gray-400">
+                                                <span>{siteVisits.length} переходов</span>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (confirm('Удалить сайт?')) {
+                                                            const { deleteSite } = require('./App');
+                                                        }
+                                                    }}
+                                                    className="text-red-400 hover:text-red-300"
+                                                >
+                                                    Удалить
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Statistics
+        function Statistics({ site, onBack, onShowScript }) {
+            const visits = storage.getVisits().filter(v => v.site_id === site.id);
+
+            const sourceCounts = {};
+            visits.forEach(v => {
+                sourceCounts[v.source] = (sourceCounts[v.source] || 0) + 1;
+            });
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <button onClick={onBack} className="text-sm text-gray-400 hover:text-white mb-2">
+                                ← Назад
+                            </button>
+                            <h2 className="text-2xl font-bold">{site.name}</h2>
+                            <p className="text-sm text-gray-400">{site.url}</p>
+                        </div>
+                        <button
+                            onClick={onShowScript}
+                            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm"
+                        >
+                            Показать скрипт
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-5">
+                            <p className="text-3xl font-bold">{visits.length}</p>
+                            <p className="text-sm text-gray-400">Всего переходов</p>
+                        </div>
+                        <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-5">
+                            <p className="text-3xl font-bold">
+                                {visits.filter(v => {
+                                    const today = new Date().toISOString().split('T')[0];
+                                    return v.timestamp.split('T')[0] === today;
+                                }).length}
+                            </p>
+                            <p className="text-sm text-gray-400">Сегодня</p>
+                        </div>
+                        <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-5">
+                            <p className="text-3xl font-bold">{Object.keys(sourceCounts).length}</p>
+                            <p className="text-sm text-gray-400">Источников</p>
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-5">
+                        <h3 className="font-semibold mb-4">Источники AI ботов</h3>
+                        <div className="space-y-2">
+                            {Object.entries(sourceCounts).map(([source, count]) => (
+                                <div key={source} className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg">
+                                    <span>{source}</span>
+                                    <span className="text-violet-400 font-bold">{count}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-5">
+                        <h3 className="font-semibold mb-4">Последние переходы</h3>
+                        <div className="space-y-2">
+                            {visits.slice(0, 10).map(visit => (
+                                <div key={visit.id} className="p-3 bg-gray-900/50 rounded-lg text-sm">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-violet-400">{visit.source}</span>
+                                        <span className="text-gray-500 text-xs">
+                                            {new Date(visit.timestamp).toLocaleDateString('ru-RU')}
+                                        </span>
+                                    </div>
+                                    <p className="text-gray-300 font-mono text-xs">{visit.page}</p>
+                                    <p className="text-gray-400 text-xs mt-1">«{visit.query}»</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Script View
+        function ScriptView({ site, onBack }) {
+            const [copied, setCopied] = useState(false);
+
+            const script = `<!-- AI Bot Tracker -->
+<script>
+(function() {
+    var KEY = '${site.script_key}';
+    var ENDPOINT = 'https://your-project.supabase.co/functions/v1/collect';
+
+    // Определение AI ботов
+    var bots = [
+        { name: 'ChatGPT', pattern: /GPTBot|ChatGPT/i },
+        { name: 'Google AI', pattern: /Googlebot|Google-Extended/i },
+        { name: 'DeepSeek', pattern: /DeepSeek/i },
+        { name: 'Яндекс AI', pattern: /YandexBot/i },
+        { name: 'Алиса AI', pattern: /AliceBot/i },
+        { name: 'Perplexity', pattern: /PerplexityBot/i }
+    ];
+
+    var ua = navigator.userAgent;
+    var ref = document.referrer;
+    var detectedBot = null;
+
+    for (var i = 0; i < bots.length; i++) {
+        if (bots[i].pattern.test(ua) || bots[i].pattern.test(ref)) {
+            detectedBot = bots[i].name;
+            break;
+        }
+    }
+
+    if (detectedBot) {
+        var data = {
+            key: KEY,
+            site: '${site.url}',
+            page: window.location.pathname,
+            source: detectedBot,
+            query: new URLSearchParams(new URL(ref).search).get('q') || '',
+            timestamp: new Date().toISOString()
+        };
+
+        fetch(ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+    }
+})();
+</script>`;
+
+            const copyScript = () => {
+                navigator.clipboard.writeText(script);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            };
+
+            return (
+                <div className="space-y-6">
+                    <button onClick={onBack} className="text-sm text-gray-400 hover:text-white">
+                        ← Назад к статистике
+                    </button>
+
+                    <div>
+                        <h2 className="text-2xl font-bold mb-2">Скрипт отслеживания</h2>
+                        <p className="text-gray-400 mb-4">
+                            Вставьте этот скрипт в &lt;head&gt; вашего сайта
+                        </p>
+                    </div>
+
+                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
+                        <p className="text-sm text-blue-200">
+                            <strong>Инструкция:</strong> Скопируйте скрипт ниже и вставьте в HTML-файл вашего сайта перед закрывающим тегом &lt;/head&gt;
+                        </p>
+                    </div>
+
+                    <div className="relative">
+                        <div className="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-t-xl px-4 py-2">
+                            <span className="text-xs text-gray-400">tracking-script.html</span>
+                            <button
+                                onClick={copyScript}
+                                className={`px-3 py-1 rounded text-xs ${
+                                    copied ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-600'
+                                }`}
+                            >
+                                {copied ? '✓ Скопировано' : 'Копировать'}
+                            </button>
+                        </div>
+                        <pre className="bg-gray-950 border border-gray-700 border-t-0 rounded-b-xl p-4 overflow-x-auto text-xs text-gray-300">
+                            {script}
+                        </pre>
+                    </div>
+                </div>
+            );
+        }
+
+        // Add Site Modal
+        function AddSiteModal({ onClose, onAdd }) {
+            const [url, setUrl] = useState('');
+            const [name, setName] = useState('');
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!url) return;
+                let processedUrl = url.trim();
+                if (!processedUrl.startsWith('http')) {
+                    processedUrl = 'https://' + processedUrl;
+                }
+                onAdd(processedUrl, name.trim());
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+                    <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md">
+                        <h2 className="text-xl font-bold mb-4">Добавить сайт</h2>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm text-gray-300 mb-1">URL сайта</label>
+                                <input
+                                    type="text"
+                                    value={url}
+                                    onChange={(e) => setUrl(e.target.value)}
+                                    placeholder="example.com"
+                                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm text-gray-300 mb-1">Название (необязательно)</label>
+                                <input
+                                    type="text"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    placeholder="Мой сайт"
+                                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                                />
+                            </div>
+                            <div className="flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="flex-1 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg"
+                                >
+                                    Отмена
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg font-medium"
+                                >
+                                    Добавить
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        // Рендеринг
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
